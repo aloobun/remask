@@ -1,4 +1,5 @@
 import torch
+import random
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
@@ -6,7 +7,17 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 
 class ReMaskTrainer:
-    def __init__(self, model_name="EleutherAI/pythia-160m", learning_rate=1e-5):
+    def __init__(self, model_name="amd/AMD-Llama-135m", learning_rate=1e-5):
+        self.prefix = [
+            "So, the answer is ",
+            "Therefore, the answer is ",
+            "As a result, the answer is ",
+            "On this basis, ",
+            "Considering this, we get ",
+            "Putting this all together, we get: ",
+            "After all that, it seems that the answer is "
+        ]
+        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
         
@@ -66,9 +77,6 @@ class ReMaskTrainer:
         return total_loss
     
     def preprocess_data(self, example):
-        """
-        Preprocess dataset into the ReMask template with error handling
-        """
         try:
             instruction = example.get('prompt', '')
             reasoning = example.get('rationale', '')
@@ -76,8 +84,10 @@ class ReMaskTrainer:
             
             if not (instruction and answer):
                 return None
+            prfx = random.choice(self.prefix)
+            augmented_answer = prfx + answer
             
-            prompt = f"<|user|>\n{instruction}\n<|logic|>\n{reasoning}\n<|answer|>\n{answer}"
+            prompt = f"<|user|>\n{instruction}\n<|logic|>\n{reasoning}\n<|answer|>\n{augmented_answer}"
             return {"text": prompt}
         except Exception as e:
             print(f"Preprocessing error: {e}")
@@ -98,7 +108,6 @@ class ReMaskTrainer:
             total_loss = 0
             for batch in train_loader:
                 try:
-                    # Tokenize inputs
                     inputs = self.tokenizer(
                         batch['text'], 
                         return_tensors="pt", 
